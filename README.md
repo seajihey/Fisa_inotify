@@ -12,6 +12,12 @@ CI/CD 도구(Jenkins 등)를 사용하기 전 단계에서, 파일 시스템 이
 
 ---
 
+## 👥 Contributors
+|       배기영       |       서지혜        |
+| :-----------------: | :-----------------: |
+| [<img width="160px" src="https://github.com/bbky323.png">](https://github.com/bbky323) | [<img width="160px" src="https://github.com/seajihey.png">](https://github.com/seajihey) |
+| [@bbky323](https://github.com/bbky323) | [@seajihey](https://github.com/seajihey) |
+
 ## 📚 목차
 
 1. [inotify 개요](#1-inotify-개요)
@@ -178,150 +184,166 @@ inotifywatch -v -r /path
 
 ### 💻 실습 목적
 
-> (목적 작성 자리)
+Spring Boot 애플리케이션의 **jar** 파일을 배포 디렉터리에 업로드하면, **inotifywait**가 파일 변경을 감지하여 자동으로 배포 스크립트를 실행하도록 구성했다. 이를 통해 수동 실행 과정을 줄이고, 애플리케이션 재배포를 자동화했다.
 
 ---
 
 ### 🔄 전체 흐름
 
-```text
-(실습 전체 흐름)
-```
+
+1. 로컬에서 Spring Boot 프로젝트를 빌드하여 **jar** 파일을 생성한다.
+2. 생성한 **jar** 파일을 Ubuntu VM의 **deploy** 디렉터리로 업로드한다.
+3. VM에서 실행 중인 **watch.sh**가 **deploy** 디렉터리의 파일 변경을 감지한다.
+4. 변경이 감지되면 **deploy.sh**를 실행한다.
+5. **deploy.sh**는 기존 애플리케이션 프로세스를 종료하고, 새 **jar** 파일을 실행한다.
+6. 실행 결과는 **app.log**에 기록된다.
 
 ---
 
 ### ⚙️ 구성 요소
 
-* watch.sh
-* deploy.sh
-* (기타)
+#### **deploy.sh**
+- 배포 대상 **jar** 파일 존재 여부 확인
+- 기존 포트 점유 프로세스 종료
+- 새 애플리케이션 실행
+- 로그 파일 저장
+- 실행 성공 여부 확인
+```bash
+#!/bin/bash
+
+APP_NAME="inotify_web-0.0.1-SNAPSHOT.jar"
+DEPLOY_DIR="/home/ubuntu/mission0324/deploy"
+LOG_DIR="/home/ubuntu/mission0324/logs"
+LOG_FILE="$LOG_DIR/app.log"
+
+echo "===== 배포 시작 ====="
+date
+
+# 1. jar 존재 확인
+if [ ! -f "$DEPLOY_DIR/$APP_NAME" ]; then
+  echo "JAR 파일이 없습니다: $DEPLOY_DIR/$APP_NAME"
+  exit 1
+fi
+
+# 2. 기존 8080 포트 프로세스 종료
+PID=$(lsof -t -i:8081)
+
+if [ -n "$PID" ]; then
+  echo "기존 프로세스 종료: $PID"
+  kill "$PID"
+  sleep 3
+
+  PID2=$(lsof -t -i:8081)
+  if [ -n "$PID2" ]; then
+    echo "강제 종료: $PID2"
+    kill -9 "$PID2"
+  fi
+fi
+
+# 3. 새 앱 실행
+echo "새 앱 실행"
+nohup java -jar "$DEPLOY_DIR/$APP_NAME" > "$LOG_FILE" 2>&1 &
+
+sleep 8
+
+# 4. 실행 확인
+NEW_PID=$(lsof -t -i:8081)
+if [ -n "$NEW_PID" ]; then
+  echo "새 앱 실행 성공: PID=$NEW_PID"
+else
+  echo "새 앱 실행 실패"
+  exit 1
+fi
+
+echo "===== 배포 완료 ====="
+
+```
+
+#### **watch.sh**
+- **deploy** 디렉터리를 지속적으로 감시
+- **create**, **close_write**, **moved_to** 이벤트 발생 시 배포 스크립트 실행
+- 새 **jar** 업로드 시 자동 재배포 수행
+```bash
+#!/bin/bash
+
+WATCH_DIR="/home/ubuntu/mission0324/deploy"
+TARGET_JAR="inotify_web-0.0.1-SNAPSHOT.jar"
+DEPLOY_SCRIPT="/home/ubuntu/mission0324/deploy.sh"
+
+echo "배포 폴더 감시 시작..."
+echo "감시 대상: $WATCH_DIR/$TARGET_JAR"
+
+while true
+do
+  inotifywait -e create -e close_write -e moved_to "$WATCH_DIR"
+
+  if [ -f "$WATCH_DIR/$TARGET_JAR" ]; then
+    echo "JAR 변경 감지: $TARGET_JAR"
+    "$DEPLOY_SCRIPT"
+  fi
+done
+
+```
 
 ---
 
 ### 🚀 실행 방법
 
-```bash
-# 실행 절차
-```
-
----
-
-### 🔍 확인 방법
-
-*
-*
-*
-
--
----
-
-## 📚 목차
-
-1. [inotify 개요](#1-inotify-개요)
-2. [inotify 정리](#2-inotify-정리)
-3. [실습 정리](#3-실습-정리)
-
----
-
-# 1. inotify 개요
-
-### 🔍 개념
-
-> (설명 들어갈 자리)
-
----
-
-### 🎯 사용 목적
-
-*
-*
-*
-
----
-
-### ⚙️ 동작 흐름
-
-```text
-(흐름 작성 자리)
-```
-
----
-
-# 2. inotify 정리
-
-### 📌 핵심 개념
-
-*
-*
-*
-
----
-
-### 🧩 주요 이벤트
-
-| Event | 설명 |
-| ----- | -- |
-|       |    |
-|       |    |
-|       |    |
-
----
-
-### 🛠️ 사용 방식
+#### 1) 감시 스크립트 실행
 
 ```bash
-# 명령어 예시 자리
+ssh watch.sh
 ```
+- watch.sh의 inotifywait가 변경 감지
+- 변경 감지 시 deploy.sh 실행
 
----
-
-### ⚠️ 주의사항
-
-*
-*
-*
-
----
-
-# 3. 실습 정리
-
-### 💻 실습 목적
-
-> (목적 작성 자리)
-
----
-
-### 🔄 전체 흐름
-
-```text
-(실습 전체 흐름)
-```
-
----
-
-### ⚙️ 구성 요소
-
-* watch.sh
-* deploy.sh
-* (기타)
-
----
-
-### 🚀 실행 방법
+#### 2) jar 파일 업로드
 
 ```bash
-# 실행 절차
+cp inotify_web-0.0.1-SNAPSHOT.jar /home/ubuntu/mission0324/deploy/
 ```
 
----
-
-### 🔍 확인 방법
-
-*
-*
-*
+- deploy를 디렉터리로 jar 파일을 복사하여 jar가 업데이트 된다고 가정!
 
 ---
 
-이 정도 구조면 지금 하신 **inotify + 자동배포 실습** 깔끔하게 정리하기에 충분합니다.
-내용 채우실 때 막히는 부분 있으면 그 파트만 따로 요청하시면 됩니다.
+#### 🔍 확인 방법
+
+
+**1) watch.sh 실행 결과**
+
+<img width="803" height="226" alt="image" src="https://github.com/user-attachments/assets/f6575aad-4f2f-4006-ad6e-f691fef67f62" />
+
+**2) app.log 결과**
+
+<img width="791" height="451" alt="image" src="https://github.com/user-attachments/assets/c7779e7a-6257-4243-a7f0-c1096589f416" />
+ 
+**3) 재배포시 서버를 내렸을 때**
+```bash
+curl http://localhost:8081
+```
+<img width="798" height="66" alt="image" src="https://github.com/user-attachments/assets/9d11ed98-51d1-45da-90fc-f3323babf5a0" />
+
+**4) 서버 다시 올라왔을 때**
+
+<img width="767" height="358" alt="image" src="https://github.com/user-attachments/assets/b35e8a73-a72c-4cf5-9c25-65b8fc1a5753" />
+
+---
+
+### 🛠️ 트러블 슈팅
+#### 로그 파일 경로 오류
+- 상황:
+    - log 파일을 못 찾는 오류 발생
+- 원인:
+    - 경로 앞에 '$' 가 붙여져 있음 확인
+- 해결:
+    - 해당 문자를 지워 정상적인 경로로 수정
+
+#### 애플리케이션 실행 확인 실패
+- 상황:
+    - 위 이미지처럼 프로세스 종료 후 재실행 실패 오류 발생
+- 원인:
+    - sleep 3 이후 바로 포트를 확인하는 구조 때문에 실행 실패로 오판하는 문제 발생
+    - Spring Boot 가동 시간이 4초 이상 걸리면서 발생한 문제였음! 
+- 해결:
+    - 대기 시간을 8초로 조정하여 문제 해결!
