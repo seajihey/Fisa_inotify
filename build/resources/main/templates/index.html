@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${title}">My App</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1 th:text="${title}">Spring Boot Auto Deploy Practice</h1>
+            <p th:text="${message}">파일 변경 감지와 자동 배포 실습용 페이지입니다.</p>
+            <a href="/hello" class="btn">테스트 API 확인</a>
+        </div>
+    </div>
+</body>
+</html>
